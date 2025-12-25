@@ -1,18 +1,20 @@
 ﻿#include <SFML/Graphics.hpp>
+
 #include "imgui.h"
 #include "imgui-SFML.h"
-#include <random>
-#include <vector>
+
 #include <algorithm>
 #include <cmath>
-#include <stack>
 #include <iostream>
+#include <limits>
 #include <list>
-#include <set>
+#include <random>
+#include <string>
+#include <vector>
 
 struct Point {
     double x, y;
-    Point(double x = 0, double  y = 0) : x(x), y(y) {}
+    Point(double x = 0, double y = 0) : x(x), y(y) {}
 
     bool operator==(const Point& other) const {
         return std::abs(x - other.x) < 1e-9 && std::abs(y - other.y) < 1e-9;
@@ -28,14 +30,12 @@ struct Edge {
     }
 
     bool operator<(const Edge& other) const {
-        // Сортируем точки в ребре для consistent сравнения
         Point min1 = (p1.x < p2.x || (std::abs(p1.x - p2.x) < 1e-9 && p1.y < p2.y)) ? p1 : p2;
         Point max1 = (min1 == p1) ? p2 : p1;
 
         Point min2 = (other.p1.x < other.p2.x || (std::abs(other.p1.x - other.p2.x) < 1e-9 && other.p1.y < other.p2.y)) ? other.p1 : other.p2;
         Point max2 = (min2 == other.p1) ? other.p2 : other.p1;
 
-        // Сравниваем сначала по минимальной точке, потом по максимальной
         if (min1.x != min2.x) return min1.x < min2.x;
         if (min1.y != min2.y) return min1.y < min2.y;
         if (max1.x != max2.x) return max1.x < max2.x;
@@ -46,6 +46,7 @@ struct Edge {
 struct Triangle {
     Point p1, p2, p3;
     Triangle(Point p1, Point p2, Point p3) : p1(p1), p2(p2), p3(p3) {}
+
     bool operator==(const Triangle& other) const {
         return (p1 == other.p1 || p1 == other.p2 || p1 == other.p3) &&
             (p2 == other.p1 || p2 == other.p2 || p2 == other.p3) &&
@@ -53,17 +54,10 @@ struct Triangle {
     }
 };
 
-int pointSideOfEdge(const Point& a, const Point& b, const Point& c){
-    double det = (b.y - a.y) * (c.x - a.x) - (b.x - a.x) * (c.y - a.y); 
-    if (std::abs(det) < 1e-9) {
-        return 0;
-    }
-    else if (det > 0) {
-        return 1; //слева
-    }
-    else {
-        return -1; // справа
-    }
+int pointSideOfEdge(const Point& a, const Point& b, const Point& c) {
+    double det = (b.y - a.y) * (c.x - a.x) - (b.x - a.x) * (c.y - a.y);
+    if (std::abs(det) < 1e-9) return 0;
+    return (det > 0) ? 1 : -1;
 }
 
 class DelaunayTriangulation {
@@ -76,16 +70,16 @@ private:
     Edge findFirstEdge() {
         if (points.size() < 3) return Edge(Point(0, 0), Point(1, 1));
 
-        //найти самую левую нижнюю точку
         int startInd = 0;
-        for (int i = 1; i < points.size(); i++) {
-            if (points[i].x < points[startInd].x || (std::abs(points[i].x - points[startInd].x) < 1e-9 && points[i].y < points[startInd].y)) {
+        for (int i = 1; i < static_cast<int>(points.size()); i++) {
+            if (points[i].x < points[startInd].x ||
+                (std::abs(points[i].x - points[startInd].x) < 1e-9 && points[i].y < points[startInd].y)) {
                 startInd = i;
             }
         }
-        
+
         int nextInd = (startInd == 0) ? 1 : 0;
-        for (int i = 0; i < points.size(); ++i) {
+        for (int i = 0; i < static_cast<int>(points.size()); ++i) {
             if (i == startInd || i == nextInd) continue;
 
             int det = pointSideOfEdge(points[startInd], points[nextInd], points[i]);
@@ -93,8 +87,10 @@ private:
                 nextInd = i;
             }
             else if (det == 0) {
-                double d1 = std::sqrt((points[nextInd].x - points[startInd].x) * (points[nextInd].x - points[startInd].x) + (points[nextInd].y - points[startInd].y) * (points[nextInd].y - points[startInd].y));
-                double d2 = std::sqrt((points[i].x - points[startInd].x) * (points[i].x - points[startInd].x) + (points[i].y - points[startInd].y) * (points[i].y - points[startInd].y));
+                double d1 = std::hypot(points[nextInd].x - points[startInd].x,
+                    points[nextInd].y - points[startInd].y);
+                double d2 = std::hypot(points[i].x - points[startInd].x,
+                    points[i].y - points[startInd].y);
                 if (d2 > d1) nextInd = i;
             }
         }
@@ -134,7 +130,7 @@ private:
         normal.x = -dir.y;
         normal.y = dir.x;
 
-        return std::sqrt(vec.x * vec.x + vec.y * vec.y) * ((vec.x * normal.x + vec.y * normal.y >= 0) ? 1.0 : -1.0);
+        return std::hypot(vec.x, vec.y) * ((vec.x * normal.x + vec.y * normal.y >= 0) ? 1.0 : -1.0);
     }
 
     Point findRightConjugatePoint(const Edge& e) {
@@ -142,12 +138,11 @@ private:
         double minDist = std::numeric_limits<double>::max();
         bool found = false;
 
-        for (int i = 0; i < points.size(); ++i) {
+        for (int i = 0; i < static_cast<int>(points.size()); ++i) {
             if (points[i] == e.p1 || points[i] == e.p2) continue;
 
             if (pointSideOfEdge(e.p1, e.p2, points[i]) == -1) {
                 Point c = calculateCircleCenter(e.p1, e.p2, points[i]);
-
                 double dist = calculateDistance(c, e);
 
                 if (dist < minDist) {
@@ -163,7 +158,6 @@ private:
         }
 
         return p;
-
     }
 
 public:
@@ -175,18 +169,19 @@ public:
         triangles.clear();
     }
 
-    void addPoint(double x, double y) { points.push_back(Point(x, y)); }
+    void addPoint(double x, double y) { points.emplace_back(x, y); }
 
     void generateRandPoints(int count, double w, double h) {
         clear();
-        
+
         std::uniform_real_distribution<double> dist_x(30.0, w - 30.0);
         std::uniform_real_distribution<double> dist_y(30.0, h - 30.0);
 
-        std::default_random_engine re;
+        std::random_device rd;
+        std::default_random_engine re(rd());
 
         for (int i = 0; i < count; ++i) {
-            points.push_back(Point(dist_x(re), dist_y(re)));
+            points.emplace_back(dist_x(re), dist_y(re));
         }
     }
 
@@ -211,25 +206,20 @@ public:
             firstEdge = Edge(firstEdge.p2, firstEdge.p1);
         }
 
-
         activeEdges.push_back(firstEdge);
 
         while (!activeEdges.empty()) {
             Edge curEdge = activeEdges.front();
             activeEdges.pop_front();
 
-            //найти правую сопряженную точку
             Point conjugatePoint = findRightConjugatePoint(curEdge);
 
-            //не нашли точку справа - ребро граничное
             if (conjugatePoint.x == std::numeric_limits<double>::max()) {
                 deadEdges.push_back(curEdge);
                 continue;
             }
 
-            //новый треугольник
-            Triangle newTriangle(curEdge.p1, curEdge.p2, conjugatePoint);
-            triangles.push_back(newTriangle);
+            triangles.emplace_back(curEdge.p1, curEdge.p2, conjugatePoint);
 
             Edge newEdge1(curEdge.p1, conjugatePoint);
             Edge newEdge2(conjugatePoint, curEdge.p2);
@@ -265,17 +255,19 @@ public:
     }
 };
 
-int main()
-{
-    const int wWidth = 1200;
-    const int wHeight = 800;
+int main() {
+    const unsigned int wWidth = 1200;
+    const unsigned int wHeight = 800;
 
-    sf::RenderWindow window(sf::VideoMode(wWidth, wHeight), "Delaunay Triangulation");
+    sf::RenderWindow window(
+        sf::VideoMode(sf::Vector2u{ wWidth, wHeight }),
+        "Delaunay Triangulation"
+    );
     window.setFramerateLimit(60);
 
     ImGui::SFML::Init(window);
 
-    DelaunayTriangulation  dt;
+    DelaunayTriangulation dt;
 
     bool drawPoints = true;
     bool drawTriangles = true;
@@ -288,23 +280,25 @@ int main()
     sf::Clock deltaClock;
 
     while (window.isOpen()) {
-        sf::Event event;
-        while (window.pollEvent(event)) {
-            ImGui::SFML::ProcessEvent(window, event);
+        while (const auto event = window.pollEvent()) {
+            ImGui::SFML::ProcessEvent(window, *event);
 
-            if (event.type == sf::Event::Closed) {
+            if (event->is<sf::Event::Closed>()) {
                 window.close();
             }
 
-            if (event.type == sf::Event::MouseButtonPressed) {
-                if (event.mouseButton.button == sf::Mouse::Left) {
-                    sf::Vector2i mousePos = sf::Mouse::getPosition(window);
-                    dt.addPoint(mousePos.x, mousePos.y);
+            if (const auto* mb = event->getIf<sf::Event::MouseButtonPressed>()) {
+                if (mb->button == sf::Mouse::Button::Left) {
+                    if (!ImGui::GetIO().WantCaptureMouse) {
+                        dt.addPoint(static_cast<double>(mb->position.x),
+                            static_cast<double>(mb->position.y));
+                    }
                 }
             }
         }
-        
-        ImGui::SFML::Update(window, deltaClock.restart());
+
+        const sf::Time deltaTime = deltaClock.restart();
+        ImGui::SFML::Update(window, deltaTime);
 
         ImGui::Begin("Delaunay Triangulation Control");
 
@@ -319,7 +313,7 @@ int main()
         }
 
         if (ImGui::Button("Generate Random Points")) {
-            dt.generateRandPoints(pointCount, wWidth, wHeight);
+            dt.generateRandPoints(pointCount, static_cast<double>(wWidth), static_cast<double>(wHeight));
         }
 
         ImGui::SameLine();
@@ -334,7 +328,6 @@ int main()
 
         ImGui::Separator();
         ImGui::Text("Visualization:");
-
         ImGui::Checkbox("Show Points", &drawPoints);
         ImGui::Checkbox("Show Triangles", &drawTriangles);
         ImGui::Checkbox("Show Circles", &drawCircles);
@@ -342,83 +335,83 @@ int main()
 
         ImGui::End();
 
-        window.clear(sf::Color(40, 44, 52));
+        window.clear(sf::Color{ 40, 44, 52 });
 
         if (drawTriangles) {
             const auto& triangles = dt.getTriangles();
             std::vector<Edge> uniqueEdges;
+            uniqueEdges.reserve(triangles.size() * 3);
 
-            for (const auto& triangle : triangles) {
+            for (const auto& tri : triangles) {
                 Edge edges[3] = {
-                    Edge(triangle.p1, triangle.p2),
-                    Edge(triangle.p2, triangle.p3),
-                    Edge(triangle.p3, triangle.p1)
+                    Edge(tri.p1, tri.p2),
+                    Edge(tri.p2, tri.p3),
+                    Edge(tri.p3, tri.p1)
                 };
 
-                for (const auto& edge : edges) {
+                for (const auto& e : edges) {
                     bool found = false;
-                    for (const auto& uniqueEdge : uniqueEdges) {
-                        if (edge == uniqueEdge) {
-                            found = true;
-                            break;
-                        }
+                    for (const auto& ue : uniqueEdges) {
+                        if (e == ue) { found = true; break; }
                     }
-                    if (!found) {
-                        uniqueEdges.push_back(edge);
-                    }
+                    if (!found) uniqueEdges.push_back(e);
                 }
             }
 
-            for (const auto& edge : uniqueEdges) {
-                sf::Vertex line[] = {
-                    sf::Vertex(sf::Vector2f(static_cast<float>(edge.p1.x),
-                                           static_cast<float>(edge.p1.y))),
-                    sf::Vertex(sf::Vector2f(static_cast<float>(edge.p2.x),
-                                           static_cast<float>(edge.p2.y)))
+            const sf::Color lineColor{ 200, 200, 200 };
+            for (const auto& e : uniqueEdges) {
+                const auto x1 = static_cast<float>(e.p1.x);
+                const auto y1 = static_cast<float>(e.p1.y);
+                const auto x2 = static_cast<float>(e.p2.x);
+                const auto y2 = static_cast<float>(e.p2.y);
+
+                const sf::Vertex line[2] = {
+                    sf::Vertex{{x1, y1}, lineColor, {0.f, 0.f}},
+                    sf::Vertex{{x2, y2}, lineColor, {0.f, 0.f}}
                 };
-                line[0].color = sf::Color(200, 200, 200);
-                line[1].color = sf::Color(200, 200, 200);
-                window.draw(line, 2, sf::Lines);
+
+                window.draw(line, 2, sf::PrimitiveType::Lines);
             }
         }
+
         if (drawCircles) {
-        const auto& triangles = dt.getTriangles();
-        for (const auto& t : triangles) {
-            // Вычисляем центр и радиус окружности
-            double d = 2 * (t.p1.x * (t.p2.y - t.p3.y) +
-                            t.p2.x * (t.p3.y - t.p1.y) +
-                            t.p3.x * (t.p1.y - t.p2.y));
-            if (std::abs(d) < 1e-9) continue; // треугольник вырожден
+            const auto& triangles = dt.getTriangles();
+            for (const auto& t : triangles) {
+                const double d = 2 * (t.p1.x * (t.p2.y - t.p3.y) +
+                    t.p2.x * (t.p3.y - t.p1.y) +
+                    t.p3.x * (t.p1.y - t.p2.y));
+                if (std::abs(d) < 1e-9) continue;
 
-            double ux = ((t.p1.x * t.p1.x + t.p1.y * t.p1.y) * (t.p2.y - t.p3.y) +
-                         (t.p2.x * t.p2.x + t.p2.y * t.p2.y) * (t.p3.y - t.p1.y) +
-                         (t.p3.x * t.p3.x + t.p3.y * t.p3.y) * (t.p1.y - t.p2.y)) / d;
+                const double ux = ((t.p1.x * t.p1.x + t.p1.y * t.p1.y) * (t.p2.y - t.p3.y) +
+                    (t.p2.x * t.p2.x + t.p2.y * t.p2.y) * (t.p3.y - t.p1.y) +
+                    (t.p3.x * t.p3.x + t.p3.y * t.p3.y) * (t.p1.y - t.p2.y)) / d;
 
-            double uy = ((t.p1.x * t.p1.x + t.p1.y * t.p1.y) * (t.p3.x - t.p2.x) +
-                         (t.p2.x * t.p2.x + t.p2.y * t.p2.y) * (t.p1.x - t.p3.x) +
-                         (t.p3.x * t.p3.x + t.p3.y * t.p3.y) * (t.p2.x - t.p1.x)) / d;
+                const double uy = ((t.p1.x * t.p1.x + t.p1.y * t.p1.y) * (t.p3.x - t.p2.x) +
+                    (t.p2.x * t.p2.x + t.p2.y * t.p2.y) * (t.p1.x - t.p3.x) +
+                    (t.p3.x * t.p3.x + t.p3.y * t.p3.y) * (t.p2.x - t.p1.x)) / d;
 
-            Point center(ux, uy);
-            double r = std::sqrt((center.x - t.p1.x) * (center.x - t.p1.x) +
-                                 (center.y - t.p1.y) * (center.y - t.p1.y));
+                const Point center(ux, uy);
+                const double r = std::hypot(center.x - t.p1.x, center.y - t.p1.y);
 
-            sf::CircleShape circle;
-            circle.setRadius(static_cast<float>(r * circleScale));
-            circle.setOrigin(circle.getRadius(), circle.getRadius());
-            circle.setPosition(center.x, center.y);
-            circle.setFillColor(sf::Color::Transparent);
-            circle.setOutlineThickness(1);
-            circle.setOutlineColor(sf::Color(255, 100, 100, 80));
-            window.draw(circle);
+                sf::CircleShape circle;
+                circle.setRadius(static_cast<float>(r * circleScale));
+                circle.setOrigin({ circle.getRadius(), circle.getRadius() });
+                circle.setPosition({ static_cast<float>(center.x), static_cast<float>(center.y) });
+                circle.setFillColor(sf::Color::Transparent);
+                circle.setOutlineThickness(1.f);
+                circle.setOutlineColor(sf::Color{ 255, 100, 100, 80 });
+
+                window.draw(circle);
+            }
         }
-    }
+
         if (drawPoints) {
             const auto& points = dt.getPoints();
-            for (const auto& point : points) {
-                sf::CircleShape circle(3);
-                circle.setPosition(point.x - 3, point.y - 3);
-                circle.setFillColor(sf::Color::Magenta);
-                window.draw(circle);
+            for (const auto& p : points) {
+                sf::CircleShape c(3.f);
+                c.setPosition({ static_cast<float>(p.x - 3.0), static_cast<float>(p.y - 3.0) });
+                c.setFillColor(sf::Color::Magenta);
+                window.draw(c);
             }
         }
 
@@ -429,4 +422,3 @@ int main()
     ImGui::SFML::Shutdown();
     return 0;
 }
-
